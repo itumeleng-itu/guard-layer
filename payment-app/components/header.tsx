@@ -48,7 +48,7 @@ export function Header({ userName = "Itu", cityName = "Loading..." }: HeaderProp
         source={{ uri: 'https://i.pravatar.cc/300' }} 
       />
       <View className="ml-4">
-        <Text className="text-xl font-bold">{greeting}, {userName}</Text>
+        <Text className="text-3xl font-bold">{greeting}, {userName}</Text>
         <Text className="text-sm opacity-70">{cityName} · {timeString}</Text>
       </View>
     </View>
