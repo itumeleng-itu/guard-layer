@@ -112,4 +112,4 @@ sequenceDiagram
 *   **Mobile:** React Native (Mimic payment application).
 
 ##  Use Case
-GuardLayer is built for African FinTechs, Neobanks (like Kuda or TymeBank), and Mobile Money Operators (M-Pesa, MTN MoMo) who need to protect their users from the "hidden" dangers of the telecom-banking gap without sacrificing the speed of modern mobile payments.
+GuardLayer is built for African FinTechs, Neobanks, and Mobile Money Operators who need to protect their users from the "hidden" dangers of the telecom-banking gap without sacrificing the speed of modern mobile payments.
