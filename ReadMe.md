@@ -1,14 +1,14 @@
-# SimShield: Adaptive Fraud Prevention Middleware
+# GuardLayer: Adaptive Fraud Prevention Middleware
 
-**SimShield** is a high-performance security middleware designed to bridge the structural gap between telecommunications networks and financial services. Across Sub-Saharan Africa, billions of dollars are lost annually to SIM swap fraud and account takeovers—not because of system hacks, but because payment platforms fail to "ask" the network if the person holding the SIM is the rightful owner.
+**GuardLayer** is a high-performance security middleware designed to bridge the structural gap between telecommunications networks and financial services. Across Sub-Saharan Africa, billions of dollars are lost annually to SIM swap fraud and account takeovers—not because of system hacks, but because payment platforms fail to "ask" the network if the person holding the SIM is the rightful owner.
 
-SimShield closes this loop. By interrogating the **Nokia Network as Code (CAMARA)** APIs in real-time, SimShield provides an adaptive security layer that balances rigorous fraud prevention with a frictionless user experience.
+GuardLayer closes this loop. By interrogating the **Nokia Network as Code (CAMARA)** APIs in real-time, GuardLayer provides an adaptive security layer that balances rigorous fraud prevention with a frictionless user experience.
 
 ---
 
 ##  The Core Innovation
 
-SimShield doesn't just block transactions; it **thinks** about them. Using **Claude 3.5 Sonnet** as its logic engine, it evaluates six distinct network signals to decide the risk profile of every transaction in under two seconds.
+GuardLayer doesn't just block transactions; it **thinks** about them. Using **Claude 3.5 Sonnet** as its logic engine, it evaluates six distinct network signals to decide the risk profile of every transaction in under two seconds.
 
 ### The Six Network Signals
 *   **SIM Swap:** Has this SIM been changed in the last 24 hours?
@@ -22,9 +22,9 @@ SimShield doesn't just block transactions; it **thinks** about them. Using **Cla
 
 ##  System Architecture & Outcomes
 
-SimShield evaluates these signals into three distinct outcomes:
+GuardLayer evaluates these signals into three distinct outcomes:
 
-1.  **Scenario A (Ambiguous Risk):** All clear, but a dynamic variable has changed (e.g., a new location). SimShield triggers a **Smile ID Liveness Check** (3D Selfie). If passed, the payment is simulated.
+1.  **Scenario A (Ambiguous Risk):** All clear, but a dynamic variable has changed (e.g., a new location). GuardLayer triggers a **Smile ID Liveness Check** (3D Selfie). If passed, the payment is simulated.
 2.  **Scenario B (Frictionless):** All signals match the user's baseline. The payment is simulated immediately without interrupting the user.
 3.  **Scenario C (Critical Failure):** A high-risk event (like a recent SIM swap) is detected. The payment is blocked, and an AI-generated human explanation is sent to the user.
 
@@ -112,4 +112,4 @@ sequenceDiagram
 *   **Mobile:** React Native (Mimic payment application).
 
 ##  Use Case
-SimShield is built for African FinTechs, Neobanks (like Kuda or TymeBank), and Mobile Money Operators (M-Pesa, MTN MoMo) who need to protect their users from the "hidden" dangers of the telecom-banking gap without sacrificing the speed of modern mobile payments.
+GuardLayer is built for African FinTechs, Neobanks (like Kuda or TymeBank), and Mobile Money Operators (M-Pesa, MTN MoMo) who need to protect their users from the "hidden" dangers of the telecom-banking gap without sacrificing the speed of modern mobile payments.
