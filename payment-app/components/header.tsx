@@ -3,10 +3,16 @@ import { View } from 'react-native';
 import { Avatar } from 'react-native-paper';
 import { Text } from '@/components/ui/text';
 
-export function Header({ userName = "Itu", location = "Johannesburg" }) {
+interface HeaderProps {
+  userName?: string;
+  cityName?: string;
+}
+
+export function Header({ userName = "Itu", cityName = "Loading..." }: HeaderProps) {
   const [greeting, setGreeting] = useState("Good Day");
   const [timeString, setTimeString] = useState("");
 
+  // Update time every minute
   useEffect(() => {
     const updateTime = () => {
       const now = new Date();
@@ -31,7 +37,6 @@ export function Header({ userName = "Itu", location = "Johannesburg" }) {
     };
 
     updateTime();
-    // Update every minute to keep time accurate
     const interval = setInterval(updateTime, 60000);
     return () => clearInterval(interval);
   }, []);
@@ -44,7 +49,7 @@ export function Header({ userName = "Itu", location = "Johannesburg" }) {
       />
       <View className="ml-4">
         <Text className="text-xl font-bold">{greeting}, {userName}</Text>
-        <Text className="text-sm opacity-70">{location}, {timeString}</Text>
+        <Text className="text-sm opacity-70">{cityName} · {timeString}</Text>
       </View>
     </View>
   );
