@@ -14,7 +14,7 @@ function getIcon(tx: Transaction) {
     case 'received':
       return { name: 'arrow-down-circle-outline' as const, color: '#22c55e' };
     case 'sent':
-      return { name: 'arrow-up-circle-outline' as const, color: '#f97316' };
+      return { name: 'arrow-up-circle-outline' as const, color: '#22c55e' };
   }
 }
 
@@ -103,11 +103,11 @@ export function HistoryActivity() {
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
 
   return (
-    <View className="mt-6 flex-1 rounded-t-[32px] overflow-hidden border-t border-white/60 shadow-sm">
+    <View className="mt-6 flex-1 rounded-t-[32px] overflow-hidden border-t border-white/60 shadow-md">
       <BlurView intensity={60} tint="light" className="p-6 flex-1 min-h-[400px]">
         <View className="bg-white/40 absolute top-0 left-0 right-0 bottom-0" />
         
-        <Text className="text-xl font-bold pl-2 pt-1 mb-4">Activity</Text>
+        <Text className="text-2xl text-center font-bold pl-2 pt-1 mb-4">Activity</Text>
 
         {transactions.length === 0 ? (
           <View className="items-center justify-center py-12">
@@ -138,7 +138,7 @@ export function HistoryActivity() {
                     style={[props.style, { alignSelf: 'center', marginLeft: 8, marginRight: 8 }]} 
                   />
                 )}
-                className="bg-white/50 rounded-xl mb-3"
+                className="bg-black/5 rounded-2xl mb-3"
               />
             );
           })
