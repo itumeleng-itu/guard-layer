@@ -24,7 +24,7 @@ GuardLayer doesn't just block transactions; it **thinks** about them. Using **Cl
 
 GuardLayer evaluates these signals into three distinct outcomes:
 
-1.  **Scenario A (Ambiguous Risk):** All clear, but a dynamic variable has changed (e.g., a new location). GuardLayer triggers a **Smile ID Liveness Check** (3D Selfie). If passed, the payment is simulated.
+1.  **Scenario A (Ambiguous Risk):** All clear, but a dynamic variable has changed (e.g., a new location). GuardLayer triggers a **Device-Native Biometric Check** (Face ID / Touch ID / Fingerprint). If passed, the payment is simulated.
 2.  **Scenario B (Frictionless):** All signals match the user's baseline. The payment is simulated immediately without interrupting the user.
 3.  **Scenario C (Critical Failure):** A high-risk event (like a recent SIM swap) is detected. The payment is blocked, and an AI-generated human explanation is sent to the user.
 
@@ -41,7 +41,7 @@ sequenceDiagram
     participant M as Guardian Middleware (Node.js)
     participant N as Nokia Network APIs (CAMARA)
     participant AI as Claude 3.5 Sonnet (Logic Layer)
-    participant BIO as Smile ID (Liveness Check)
+    participant BIO as Device Biometrics (Face ID / Fingerprint)
     participant S as PaymentSimulator (Internal Mock)
 
     Note over U, N: PHASE 1: Initiation & Parallel Interrogation
@@ -74,11 +74,11 @@ sequenceDiagram
 
     else Scenario A: AMBIGUOUS RISK (e.g., New Location/Device)
         AI-->>M: Decision: CHALLENGE (Reason: DYNAMIC_VAR_CHANGE)
-        M-->>U: 401 Challenge { action: 'SMILE_ID_LIVENESS' }
+        M-->>U: 401 Challenge { action: 'DEVICE_BIOMETRIC' }
         
-        U->>BIO: Capture "SmartSelfie" Liveness
+        U->>BIO: Prompt Device Biometric (Face ID / Fingerprint)
         activate BIO
-        BIO-->>U: Success Token
+        BIO-->>U: Authentication Result (success / fail)
         deactivate BIO
         
         U->>M: POST /confirm { bio_token }
@@ -108,7 +108,7 @@ sequenceDiagram
 *   **Database:** PostgreSQL (Audit logs & user baselines).
 *   **AI:** Claude 3.5 Sonnet (Risk Assessment & Humanization).
 *   **Network:** Nokia Network as Code (CAMARA Standard APIs).
-*   **Biometrics:** Smile ID (Africa-focused Liveness Detection).
+*   **Biometrics:** Device-Native Authentication via `expo-local-authentication` (Face ID, Touch ID, Fingerprint).
 *   **Mobile:** React Native (Mimic payment application).
 
 ##  Use Case

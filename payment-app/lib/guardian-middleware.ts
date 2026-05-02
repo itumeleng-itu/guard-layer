@@ -112,7 +112,7 @@ async function evaluateRisk(signals: NetworkSignals): Promise<Omit<GuardianResul
       reason: 'DYNAMIC_VAR_CHANGE',
       humanMessage: "We noticed you're transacting from an unusual location. For your safety, please verify your identity with a quick face scan.",
       txnId: null,
-      challengeAction: 'FACE_BIOMETRIC',
+      challengeAction: 'DEVICE_BIOMETRIC',
     };
   }
 
