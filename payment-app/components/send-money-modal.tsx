@@ -8,7 +8,7 @@ import {
   Keyboard,
   ActivityIndicator
 } from 'react-native';
-import * as LocalAuthentication from 'expo-local-authentication';
+import { useBiometricAuth } from '@/hooks/use-biometrics';
 import { Button } from "@/components/ui/button";
 import { Text } from "@/components/ui/text";
 import { Input } from "@/components/ui/input";
@@ -42,6 +42,7 @@ export function SendMoneyModal({ visible, onClose, localCurrency = { code: 'ZAR'
   const [flowState, setFlowState] = useState<FlowState>('idle');
   const [guardianResult, setGuardianResult] = useState<GuardianResult | null>(null);
   const { addTransaction } = useTransactions();
+  const { authenticate, capability } = useBiometricAuth();
   const [exchangeRate, setExchangeRate] = useState<number | null>(null);
 
   // Fetch exchange rate when modal opens
@@ -87,25 +88,7 @@ export function SendMoneyModal({ visible, onClose, localCurrency = { code: 'ZAR'
     setFlowState('authenticating');
 
     try {
-      const hasHardware = await LocalAuthentication.hasHardwareAsync();
-      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-
-      if (!hasHardware || !isEnrolled) {
-        // Fallback: skip biometric if device doesn't support it (e.g. emulator)
-        const result = await confirmPayment('emulator-bypass');
-        setGuardianResult(result);
-        setFlowState('approved');
-        addTransaction({
-          type: 'sent',
-          recipient: phone,
-          amount: parseFloat(amount) || 0,
-          currency: 'ZAR',
-          status: 'success',
-        });
-        return;
-      }
-
-      const authResult = await LocalAuthentication.authenticateAsync({
+      const authResult = await authenticate({
         promptMessage: 'Verify your identity to complete payment',
         fallbackLabel: 'Use passcode',
         cancelLabel: 'Cancel',
@@ -273,7 +256,7 @@ export function SendMoneyModal({ visible, onClose, localCurrency = { code: 'ZAR'
             onPress={handleBiometric}
             className="flex-1 h-14 rounded-xl bg-amber-500"
           >
-            <Text className="text-white font-semibold text-lg">🔐 Verify</Text>
+            <Text className="text-white font-semibold text-lg">🔐 {capability.label}</Text>
           </Button>
         </View>
       );
