@@ -1,0 +1,10 @@
+{
+  "name": "@guard-layer/middleware",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "@guard-layer/shared": "*",
+    "network-as-code": "^1.0.0",
+    "dotenv": "^16.4.5"
+  }
+}
