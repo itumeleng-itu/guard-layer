@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
@@ -11,8 +15,5 @@
   "devDependencies": {
     "dotenv": "^16.6.1",
     "turbo": "latest"
-  },
-  "dependencies": {
-    "network-as-code": "^7.0.0"
   }
 }
