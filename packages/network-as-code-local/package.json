@@ -1,0 +1,7 @@
+{
+  "name": "network-as-code",
+  "version": "0.0.0-local",
+  "description": "Local stub: published network-as-code npm builds omit dist; this matches the import shape used by GuardLayer CAMARA modules.",
+  "type": "module",
+  "main": "index.js"
+}

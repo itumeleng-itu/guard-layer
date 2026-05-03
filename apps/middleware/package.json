@@ -2,9 +2,15 @@
   "name": "@guard-layer/middleware",
   "version": "1.0.0",
   "type": "module",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js"
+  },
   "dependencies": {
     "@guard-layer/shared": "*",
-    "network-as-code": "^1.0.0",
-    "dotenv": "^16.4.5"
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "network-as-code": "file:../../packages/network-as-code-local"
   }
 }
