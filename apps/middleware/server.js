@@ -13,6 +13,8 @@ import { checkKycMatch } from './src/camara/kycMatch.js';
 import { checkCongestionInsights } from './src/camara/congestionInsights.js';
 import { computeRawRiskScore } from './src/agent/signalFusion.js';
 import { evaluateWithClaude, runDecisionPipeline } from './src/agent/decisionEngine.js';
+import { verifyBiometricSession } from './src/biometric/smileId.js';
+import { processSTKPush } from './src/payment/paymentSimulator.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: join(__dirname, '../../.env') });
@@ -182,6 +184,50 @@ app.post('/api/transaction/check', async (req, res) => {
     const status = e.statusCode || 500;
     res.status(status).json({ error: e.message || 'Internal error' });
   }
+});
+
+/** POST /confirm — biometric escalation + STK payment simulator */
+app.post('/confirm', async (req, res) => {
+  const body = req.body ?? {};
+
+  console.log('[POST /confirm] Step 1: Incoming confirm request', {
+    isFeaturePhone: body.isFeaturePhone,
+    hasBioToken: Boolean(body?.bio_token),
+    phoneNumber: body.phoneNumber ? '[present]' : undefined,
+    amount: body.amount,
+  });
+
+  if (body.isFeaturePhone === true) {
+    console.log(
+      '[POST /confirm] Decision (agentic): Feature phone — USSD PIN challenge path (no selfie capability)'
+    );
+    return res.status(200).json({
+      action: 'PIN_CHALLENGE',
+      message: 'USSD PIN required',
+    });
+  }
+
+  if (!body.bio_token) {
+    console.log(
+      '[POST /confirm] Decision (agentic): Missing bio_token — escalate to Smile ID liveness (high-risk)'
+    );
+    return res.status(401).json({
+      action: 'SMILE_ID_LIVENESS',
+      message: 'Biometric verification required due to high-risk flag',
+    });
+  }
+
+  console.log(
+    `[POST /confirm] Step 2: bio_token present — calling processSTKPush (${verifyBiometricSession.name} mock wired from ./src/biometric/smileId.js)`
+  );
+  const stk = await processSTKPush(body.phoneNumber, body.amount);
+  console.log('[POST /confirm] Step 3: STK simulator completed — returning 200 with txn_id', stk);
+
+  return res.status(200).json({
+    txn_id: stk.txn_id,
+    message: 'Payment completed successfully',
+    status: stk.status,
+  });
 });
 
 app.get('/health', (_req, res) => {
