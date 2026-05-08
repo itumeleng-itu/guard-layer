@@ -1,3 +1,9 @@
 node_modules
 .env
 .DS_Store
+GuardLayer_SDD_v1.1 (1).pdf
+
+# Dashboard build artefacts (P4)
+apps/dashboard/dist
+apps/dashboard/tsconfig.tsbuildinfo
+P4_Implementation.md
