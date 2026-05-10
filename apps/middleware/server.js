@@ -23,7 +23,9 @@ import {
 } from './src/activity/transactionLog.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: join(__dirname, '../../.env') });
+// Load middleware-local environment first. Root .env is also supported as a fallback.
+dotenv.config({ path: join(__dirname, '../../.env'), override: false });
+dotenv.config({ path: join(__dirname, '.env'), override: true });
 
 const app = express();
 app.use(cors());

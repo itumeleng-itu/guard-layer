@@ -9,12 +9,17 @@
   ],
   "scripts": {
     "dev": "turbo run dev",
+    "dev:middleware": "npm run dev --workspace=@guard-layer/middleware",
+    "dev:dashboard": "npm run dev --workspace=@guard-layer/dashboard",
+    "dev:mobile": "npm start --prefix=payment-app",
+    "dev:all": "concurrently \"npm run dev:middleware\" \"npm run dev:dashboard\" \"npm run dev:mobile\"",
     "build": "turbo run build",
     "test:nokia": "node scripts/test-nokia.js",
     "test:api": "node scripts/test-middleware-api.js",
     "test:nac-sandbox": "node scripts/test-nokia-nac-sandbox.js"
   },
   "devDependencies": {
+    "concurrently": "^9.2.1",
     "dotenv": "^16.6.1",
     "nokia-network-as-code-sdk": "npm:network-as-code@^7.0.1",
     "turbo": "latest"

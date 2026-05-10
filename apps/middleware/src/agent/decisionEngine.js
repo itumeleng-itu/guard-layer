@@ -113,8 +113,27 @@ function isPlaceholderAnthropicKey(key) {
 async function callOpenRouter(userContent) {
   const apiKey = process.env.OPENROUTER_APIKEY?.trim();
   const model =
-    process.env.OPENROUTER_MODEL?.trim() || 'anthropic/claude-sonnet-4.6';
+    process.env.OPENROUTER_MODEL?.trim() || 'anthropic/claude-3.7-sonnet';
   const referer = process.env.OPENROUTER_HTTP_REFERER || 'https://localhost';
+
+  console.log('\n=== 🤖 OPENROUTER API REQUEST ===');
+  console.log(`Model: ${model}`);
+  console.log(`Referer: ${referer}`);
+  console.log(`API Key (masked): ${apiKey ? apiKey.substring(0, 20) + '...' : 'MISSING'}`);
+  console.log(`User Content Length: ${userContent.length} chars`);
+
+  const requestPayload = {
+    model,
+    max_tokens: 1024,
+    messages: [
+      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'user', content: userContent },
+    ],
+  };
+
+  console.log(`\nRequest Payload (messages count: ${requestPayload.messages.length}):`);
+  console.log(`  - System prompt length: ${SYSTEM_PROMPT.length} chars`);
+  console.log(`  - User content length: ${userContent.length} chars`);
 
   const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
@@ -124,27 +143,41 @@ async function callOpenRouter(userContent) {
       'HTTP-Referer': referer,
       'X-Title': 'GuardLayer',
     },
-    body: JSON.stringify({
-      model,
-      max_tokens: 1024,
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: userContent },
-      ],
-    }),
+    body: JSON.stringify(requestPayload),
+  });
+
+  console.log(`\n📡 OpenRouter Response Status: ${res.status} ${res.statusText}`);
+  console.log(`Response Headers:`, {
+    'content-type': res.headers.get('content-type'),
+    'content-length': res.headers.get('content-length'),
   });
 
   if (!res.ok) {
     const errText = await res.text();
+    console.error(`❌ OpenRouter Error (${res.status}):`);
+    console.error(errText);
     throw new Error(`OpenRouter ${res.status}: ${errText}`);
   }
 
   const data = await res.json();
+  console.log(`\n📊 Full OpenRouter Response Object:`);
+  console.log(JSON.stringify(data, null, 2));
+
   const text = data.choices?.[0]?.message?.content;
+  console.log(`\n💬 Extracted AI Response Text:`);
+  console.log(text);
+
   if (!text || typeof text !== 'string') {
+    console.error('❌ Missing or invalid response text');
     throw new Error('OpenRouter: missing choices[0].message.content');
   }
-  return extractJsonObject(text);
+
+  const parsed = extractJsonObject(text);
+  console.log(`\n✅ Parsed JSON Decision Object:`);
+  console.log(JSON.stringify(parsed, null, 2));
+  console.log('=== END OPENROUTER ===\n');
+
+  return parsed;
 }
 
 /**
@@ -152,7 +185,7 @@ async function callOpenRouter(userContent) {
  * @param {string} userContent
  */
 async function callAnthropicMessages(userContent, apiKey) {
-  const model = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
+  const model = process.env.ANTHROPIC_MODEL || 'claude-3.7-sonnet';
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -185,6 +218,10 @@ async function callAnthropicMessages(userContent, apiKey) {
  * @param {{ score: number, breakdown: object[], triggerCount: number }} rawScoreResult
  */
 export async function evaluateWithClaude(signals, rawScoreResult) {
+  console.log('\n━━━ DECISION ENGINE START ━━━');
+  console.log(`Raw Risk Score: ${rawScoreResult.score}`);
+  console.log(`Trigger Count: ${rawScoreResult.triggerCount}`);
+  
   const userPayload = {
     signals,
     rawRiskScore: rawScoreResult.score,
@@ -196,26 +233,52 @@ export async function evaluateWithClaude(signals, rawScoreResult) {
   const openRouterKey = process.env.OPENROUTER_APIKEY;
   if (!isPlaceholderOpenRouterKey(openRouterKey)) {
     try {
+      console.log('\n🔵 Using OPENROUTER provider...');
       const parsed = await callOpenRouter(userContent);
-      return normalizeDecisionPayload({ ...parsed, _fallback: false });
+      const result = normalizeDecisionPayload({ ...parsed, _fallback: false });
+      
+      console.log('\n🎯 FINAL DECISION:');
+      console.log(JSON.stringify(result, null, 2));
+      console.log('━━━ DECISION ENGINE END ━━━\n');
+      
+      return result;
     } catch (e) {
       console.error('[decisionEngine] OpenRouter call failed:', e?.message ?? e);
-      return fallbackDecision(rawScoreResult, 'openrouter_failed');
+      const fallback = fallbackDecision(rawScoreResult, 'openrouter_failed');
+      console.log('\n⚠️  FALLBACK DECISION (OpenRouter failed):');
+      console.log(JSON.stringify(fallback, null, 2));
+      console.log('━━━ DECISION ENGINE END ━━━\n');
+      return fallback;
     }
   }
 
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
   if (!isPlaceholderAnthropicKey(anthropicKey)) {
     try {
+      console.log('\n🔵 Using ANTHROPIC provider...');
       const parsed = await callAnthropicMessages(userContent, anthropicKey.trim());
-      return normalizeDecisionPayload({ ...parsed, _fallback: false });
+      const result = normalizeDecisionPayload({ ...parsed, _fallback: false });
+      
+      console.log('\n🎯 FINAL DECISION:');
+      console.log(JSON.stringify(result, null, 2));
+      console.log('━━━ DECISION ENGINE END ━━━\n');
+      
+      return result;
     } catch (e) {
       console.error('[decisionEngine] Anthropic call failed:', e?.message ?? e);
-      return fallbackDecision(rawScoreResult, 'anthropic_failed');
+      const fallback = fallbackDecision(rawScoreResult, 'anthropic_failed');
+      console.log('\n⚠️  FALLBACK DECISION (Anthropic failed):');
+      console.log(JSON.stringify(fallback, null, 2));
+      console.log('━━━ DECISION ENGINE END ━━━\n');
+      return fallback;
     }
   }
 
-  return fallbackDecision(rawScoreResult, 'no_openrouter_or_anthropic_key');
+  const fallback = fallbackDecision(rawScoreResult, 'no_openrouter_or_anthropic_key');
+  console.log('\n⚠️  FALLBACK DECISION (no API keys configured):');
+  console.log(JSON.stringify(fallback, null, 2));
+  console.log('━━━ DECISION ENGINE END ━━━\n');
+  return fallback;
 }
 
 /**

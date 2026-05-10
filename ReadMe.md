@@ -253,7 +253,7 @@ npm run dev --workspace=@guard-layer/dashboard
 For **live mode** (proxies `/api` to the middleware on `:3000`):
 
 ```bash
-echo "VITE_USE_LIVE_SSE=true" > apps/dashboard/.env.local
+cp apps/dashboard/.env.local.example apps/dashboard/.env.local
 npm run dev --workspace=@guard-layer/dashboard
 ```
 
@@ -266,8 +266,18 @@ In the dashboard UI:
 
 ```bash
 cd payment-app
+export EXPO_PUBLIC_GUARD_LAYER_URL=http://localhost:3000
 npx expo start
 # Scan the QR with Expo Go, or press a / i for Android / iOS.
+```
+
+> Tip: `payment-app/.env.example` shows a working local middleware URL and scenario value. Export `EXPO_PUBLIC_GUARD_LAYER_URL` from your shell before starting Expo.
+
+For mobile device testing on a separate phone, replace `localhost` with your machine's LAN IP:
+
+```bash
+export EXPO_PUBLIC_GUARD_LAYER_URL=http://192.168.1.10:3000
+npx expo start
 ```
 
 The app calls the middleware over LAN — make sure your phone is on the same network and use your machine's LAN IP (not `localhost`) inside the app's middleware base URL.
