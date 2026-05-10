@@ -13,12 +13,13 @@ import { Button } from "@/components/ui/button";
 import { Text } from "@/components/ui/text";
 import { Input } from "@/components/ui/input";
 import { BlurView } from 'expo-blur';
-import { 
-  initiatePayment, 
-  confirmPayment, 
-  type GuardianResult, 
-  type Decision 
-} from '@/lib/guardian-middleware';
+import type { GuardianResult } from '@/lib/guardian-client';
+import {
+  confirmGuardianAfterBio,
+  initiateGuardianCheck,
+  isLiveGuardianEnabled,
+  settleFrictionlessPayment,
+} from '@/lib/guardian-client';
 import { useTransactions } from '@/hooks/use-transactions';
 import Animated, { SlideInUp, SlideOutUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -107,10 +108,16 @@ export function SendMoneyModal({ visible, onClose, localCurrency = { code: 'ZAR'
     ];
 
     if (!cleanPhone.startsWith('+')) return false;
+    if (!/^\+[0-9]+$/.test(cleanPhone)) return false;
+
+    // Live middleware (Nokia sandbox, etc.) may use non-SSA E.164 numbers.
+    if (isLiveGuardianEnabled()) {
+      return cleanPhone.length >= 10 && cleanPhone.length <= 17;
+    }
+
     const match = ssaCodes.find(c => cleanPhone.startsWith(c.code));
     if (!match) return false;
-
-    return /^\+[0-9]+$/.test(cleanPhone) && cleanPhone.length === match.length;
+    return cleanPhone.length === match.length;
   };
 
   const handlePhoneChange = (text: string) => {
@@ -149,7 +156,7 @@ export function SendMoneyModal({ visible, onClose, localCurrency = { code: 'ZAR'
       });
 
       if (authResult.success) {
-        const result = await confirmPayment('bio-verified');
+        const result = await confirmGuardianAfterBio(amount, phone, guardianResult?.transactionRef);
         setGuardianResult(result);
         setFlowState('approved');
         addTransaction({
@@ -174,13 +181,32 @@ export function SendMoneyModal({ visible, onClose, localCurrency = { code: 'ZAR'
   };
 
   const handleConfirm = () => {
-    onClose(); // Hide the RNModal immediately so user can see home screen
+    Keyboard.dismiss();
     setFlowState('scanning');
 
-    // Simulate 20 second background process
-    setTimeout(async () => {
+    const runCheck = async () => {
       try {
-        const result = await initiatePayment(amount, phone);
+        let result = await initiateGuardianCheck(amount, phone);
+
+        if (
+          result.decision === 'APPROVE' &&
+          isLiveGuardianEnabled() &&
+          result.transactionRef
+        ) {
+          try {
+            const settled = await settleFrictionlessPayment(amount, phone, result.transactionRef);
+            result = {
+              ...result,
+              txnId: settled.txnId,
+              humanMessage: settled.humanMessage ?? result.humanMessage,
+            };
+          } catch {
+            setGuardianResult(result);
+            setFlowState('error');
+            return;
+          }
+        }
+
         setGuardianResult(result);
 
         switch (result.decision) {
@@ -214,7 +240,14 @@ export function SendMoneyModal({ visible, onClose, localCurrency = { code: 'ZAR'
       } catch {
         setFlowState('error');
       }
-    }, 5000);
+    };
+
+    // Mock-only pacing so the “scanning” state is visible; live calls finish as fast as the network.
+    if (isLiveGuardianEnabled()) {
+      void runCheck();
+    } else {
+      setTimeout(() => void runCheck(), 5000);
+    }
   };
 
   // Dynamic status indicator (inline for loading states)
@@ -246,13 +279,23 @@ export function SendMoneyModal({ visible, onClose, localCurrency = { code: 'ZAR'
 
   // Toast notification for final feedback messages
   const renderToast = () => {
-    if (!['approved', 'blocked', 'challenged', 'error'].includes(flowState)) {
+    if (!['approved', 'blocked', 'challenged', 'error', 'authenticating'].includes(flowState)) {
       return null;
     }
 
     let content = null;
 
     switch (flowState) {
+      case 'authenticating':
+        content = (
+          <View className="items-center py-2">
+            <ActivityIndicator size="large" color="#F59E0B" />
+            <Text className="text-center text-white text-base mt-3">
+              Confirming with GuardLayer…
+            </Text>
+          </View>
+        );
+        break;
       case 'blocked':
         content = (
           <View>
@@ -455,7 +498,7 @@ export function SendMoneyModal({ visible, onClose, localCurrency = { code: 'ZAR'
   return (
     <>
       <RNModal 
-        visible={visible && (flowState === 'idle' || flowState === 'confirming')} 
+        visible={visible && ['idle', 'confirming', 'scanning', 'authenticating'].includes(flowState)} 
         transparent={true}
         animationType="fade"
         onRequestClose={handleClose}

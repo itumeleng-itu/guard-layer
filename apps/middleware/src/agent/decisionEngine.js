@@ -4,19 +4,26 @@ import { computeRawRiskScore } from './signalFusion.js';
 const SYSTEM_PROMPT = `You are GuardLayer, an agentic fraud detection engine for mobile money in Sub-Saharan Africa. You receive signals from Nokia CAMARA APIs and a pre-computed weighted risk score. Correlate all signals together — a SIM swap alone might be legitimate (new phone), but SIM swap + device change + location mismatch + KYC failure together is almost certainly fraud. Return ONLY valid JSON: { "decision": "APPROVE"|"CHALLENGE"|"BLOCK", "riskScore": number 0-100, "explanation": string in plain English a user can understand, "reasoning": string explaining which signals triggered the decision, "recommendedAction": string }`;
 
 /**
- * Map raw fused score to decision when Claude is unavailable (never fail open on errors).
+ * Map raw fused score to decision when the LLM path is not used (never fail open on errors).
  * @param {{ score: number, breakdown?: unknown[], triggerCount?: number }} raw
+ * @param {string} [reason] Why the LLM was skipped (for logs only).
  */
-export function fallbackDecision(raw) {
-  console.warn('[decisionEngine] fallbackDecision (no Claude or API/parse failure), raw score:', raw?.score);
+export function fallbackDecision(raw, reason = 'unspecified') {
+  console.warn('[decisionEngine] deterministic fallback:', reason, '| raw score:', raw?.score);
   const score = typeof raw?.score === 'number' ? raw.score : 0;
+  const hasSimSwap =
+    Array.isArray(raw?.breakdown) &&
+    raw.breakdown.some((b) => b && b.label === 'sim_swap' && Number(b.points) > 0);
+
   let decision = DECISION.APPROVE;
-  if (score > 61) decision = DECISION.BLOCK;
+  if (hasSimSwap || score > 61) decision = DECISION.BLOCK;
   else if (score >= 31) decision = DECISION.CHALLENGE;
 
   const explanation =
     decision === DECISION.BLOCK
-      ? 'Multiple security checks indicate elevated risk. This transaction cannot proceed automatically.'
+      ? hasSimSwap
+        ? 'A recent SIM swap was detected on this line. To protect your account, this payment cannot proceed until you verify ownership with support.'
+        : 'Multiple security checks indicate elevated risk. This transaction cannot proceed automatically.'
       : decision === DECISION.CHALLENGE
         ? 'Some checks need extra confirmation. Please verify your identity on your device.'
         : 'Security checks are within normal range for your profile.';
@@ -79,67 +86,136 @@ function extractJsonObject(text) {
   return JSON.parse(candidate.slice(start, end + 1));
 }
 
+function buildUserContent(userPayload) {
+  return `Evaluate this transaction profile and respond with JSON only.\n\n${JSON.stringify(
+    userPayload,
+    null,
+    2
+  )}`;
+}
+
+function isPlaceholderOpenRouterKey(key) {
+  if (!key || typeof key !== 'string') return true;
+  const t = key.trim();
+  return t.length === 0 || t === 'your_openrouter_api_key_here';
+}
+
+function isPlaceholderAnthropicKey(key) {
+  if (!key || typeof key !== 'string') return true;
+  const t = key.trim();
+  return t.length === 0 || t === 'your_anthropic_api_key_here';
+}
+
 /**
- * Call Claude for final decision; on failure or missing key, use fallbackDecision.
+ * OpenAI-compatible chat completions (OpenRouter).
+ * @param {string} userContent
+ */
+async function callOpenRouter(userContent) {
+  const apiKey = process.env.OPENROUTER_APIKEY?.trim();
+  const model =
+    process.env.OPENROUTER_MODEL?.trim() || 'anthropic/claude-sonnet-4.6';
+  const referer = process.env.OPENROUTER_HTTP_REFERER || 'https://localhost';
+
+  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': referer,
+      'X-Title': 'GuardLayer',
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 1024,
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: userContent },
+      ],
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`OpenRouter ${res.status}: ${errText}`);
+  }
+
+  const data = await res.json();
+  const text = data.choices?.[0]?.message?.content;
+  if (!text || typeof text !== 'string') {
+    throw new Error('OpenRouter: missing choices[0].message.content');
+  }
+  return extractJsonObject(text);
+}
+
+/**
+ * Direct Anthropic Messages API (optional fallback if OpenRouter is unset).
+ * @param {string} userContent
+ */
+async function callAnthropicMessages(userContent, apiKey) {
+  const model = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 1024,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: userContent }],
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Anthropic ${res.status}: ${errText}`);
+  }
+
+  const data = await res.json();
+  const textBlock = data.content?.find((c) => c.type === 'text');
+  const text = textBlock?.text ?? '';
+  return extractJsonObject(text);
+}
+
+/**
+ * LLM decision: prefers OpenRouter (`OPENROUTER_APIKEY`), else Anthropic, else deterministic fallback.
  * @param {object} signals — six CAMARA results
  * @param {{ score: number, breakdown: object[], triggerCount: number }} rawScoreResult
  */
 export async function evaluateWithClaude(signals, rawScoreResult) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey || apiKey === 'your_anthropic_api_key_here') {
-    return fallbackDecision(rawScoreResult);
-  }
-
-  const model =
-    process.env.ANTHROPIC_MODEL || 'claude-3-5-sonnet-20241022';
-
   const userPayload = {
     signals,
     rawRiskScore: rawScoreResult.score,
     fusionBreakdown: rawScoreResult.breakdown,
     triggerCount: rawScoreResult.triggerCount,
   };
+  const userContent = buildUserContent(userPayload);
 
-  try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 1024,
-        system: SYSTEM_PROMPT,
-        messages: [
-          {
-            role: 'user',
-            content: `Evaluate this transaction profile and respond with JSON only.\n\n${JSON.stringify(
-              userPayload,
-              null,
-              2
-            )}`,
-          },
-        ],
-      }),
-    });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      console.error('[decisionEngine] Claude API error:', res.status, errText);
-      return fallbackDecision(rawScoreResult);
+  const openRouterKey = process.env.OPENROUTER_APIKEY;
+  if (!isPlaceholderOpenRouterKey(openRouterKey)) {
+    try {
+      const parsed = await callOpenRouter(userContent);
+      return normalizeDecisionPayload({ ...parsed, _fallback: false });
+    } catch (e) {
+      console.error('[decisionEngine] OpenRouter call failed:', e?.message ?? e);
+      return fallbackDecision(rawScoreResult, 'openrouter_failed');
     }
-
-    const data = await res.json();
-    const textBlock = data.content?.find((c) => c.type === 'text');
-    const text = textBlock?.text ?? '';
-    const parsed = extractJsonObject(text);
-    return normalizeDecisionPayload({ ...parsed, _fallback: false });
-  } catch (e) {
-    console.error('[decisionEngine] Claude call failed:', e);
-    return fallbackDecision(rawScoreResult);
   }
+
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  if (!isPlaceholderAnthropicKey(anthropicKey)) {
+    try {
+      const parsed = await callAnthropicMessages(userContent, anthropicKey.trim());
+      return normalizeDecisionPayload({ ...parsed, _fallback: false });
+    } catch (e) {
+      console.error('[decisionEngine] Anthropic call failed:', e?.message ?? e);
+      return fallbackDecision(rawScoreResult, 'anthropic_failed');
+    }
+  }
+
+  return fallbackDecision(rawScoreResult, 'no_openrouter_or_anthropic_key');
 }
 
 /**

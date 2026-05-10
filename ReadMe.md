@@ -174,7 +174,7 @@ guard-layer/
 | :--- | :--- |
 | Backend (middleware) | Node.js 18+, Express 4, ES modules |
 | Network APIs | Nokia Network as Code (CAMARA) via `network-as-code-local` shim, with `MOCK_MODE` fallback for offline demos |
-| AI | Claude 3.5 Sonnet (`@anthropic-ai/sdk` semantics implemented in `decisionEngine.js`) with deterministic fallback |
+| AI | OpenRouter chat completions (default `OPENROUTER_MODEL`) or direct Anthropic Messages in `decisionEngine.js`, with deterministic fallback |
 | Mobile (SendCash) | Expo SDK 54, React Native 0.81, NativeWind, `expo-local-authentication` |
 | Dashboard | Vite 5, React 18, TypeScript 5 (strict), SSE consumer over `fetch` + `ReadableStream` |
 | Build orchestration | Turborepo + NPM workspaces |
@@ -185,7 +185,8 @@ guard-layer/
 
 - **Node.js 18+** and **npm 9+** (workspaces support).
 - **PowerShell** on Windows or any POSIX shell on macOS/Linux.
-- (Optional) **Anthropic API key** — without it, the middleware uses the deterministic fallback decision engine.
+- (Optional) **OpenRouter API key** (`OPENROUTER_APIKEY` + `OPENROUTER_MODEL`) — preferred for the AI decision layer; without LLM keys, the middleware uses the deterministic fallback engine.
+- (Optional) **Anthropic API key** — used only when OpenRouter env vars are not set.
 - (Optional) **Nokia Network as Code key** — without it, set `MOCK_MODE=true` and the CAMARA modules return scenario fixtures.
 - (Optional, for the mobile app) **Expo Go** on a phone or an Android/iOS simulator.
 
@@ -205,7 +206,8 @@ npm install
 # 2. Configure environment
 cp .env.example .env
 # then edit .env and set:
-#   ANTHROPIC_API_KEY=...   (optional; fallback engine works without it)
+#   OPENROUTER_APIKEY=...   (optional; preferred — uses OPENROUTER_MODEL on OpenRouter)
+#   ANTHROPIC_API_KEY=...   (optional; direct Anthropic if OpenRouter unset)
 #   NOKIA_API_KEY=...       (optional when MOCK_MODE=true)
 #   MOCK_MODE=true
 #   PORT=3000
@@ -235,9 +237,10 @@ npm run dev --workspace=@guard-layer/middleware
 
 Endpoints:
 - `GET  /health` — liveness check
+- `GET  /api/activity` — recent risk checks / settlements for the dashboard (`sendcash`, `dashboard`, …)
 - `POST /api/transaction/check` — single JSON response (USSD / legacy clients)
 - `POST /api/transaction/check/stream` — Server-Sent Events pipeline
-- `POST /confirm` — biometric escalation + STK Push simulator (see `P3_Implementation.md`)
+- `POST /confirm` — biometric escalation + STK Push simulator (see `P3_Implementation.md`). After an **APPROVE** check, SendCash settles with **`bio_token: GUARD_LAYER_FRICTIONLESS`** + **`transactionRef`** (see `guardian-client.ts`).
 
 ### Terminal 2 — Dashboard (P4)
 
@@ -327,7 +330,7 @@ See `P3_Implementation.md` for the three documented `POST /confirm` scenarios (T
 | :--- | :--- | :--- |
 | Dashboard shows `Mock SSE` even though I want live mode | `apps/dashboard/.env.local` not present or wrong key | Create the file with `VITE_USE_LIVE_SSE=true` and restart `npm run dev`. |
 | Dashboard banner: `Failed to fetch` / CORS | Middleware not running on `:3000` or different port | Confirm with `curl http://localhost:3000/health`; if your `PORT` differs, update `apps/dashboard/vite.config.ts` proxy target. |
-| Decision panel always says fallback | `ANTHROPIC_API_KEY` missing or placeholder | Set a real key in `.env`, or accept the deterministic fallback (it still demos the UI correctly). |
+| Decision panel always says fallback | No `OPENROUTER_APIKEY` / `ANTHROPIC_API_KEY`, or placeholder | Set **`OPENROUTER_APIKEY`** (+ **`OPENROUTER_MODEL`**) or Anthropic key in `.env`, or accept the deterministic fallback. |
 | `npm install` fails on Windows with EBUSY | OneDrive sync on the workspace folder | Pause OneDrive while installing, or move the repo outside OneDrive. |
 | `npm run build --workspace=@guard-layer/dashboard` fails with TS errors | Stale `node_modules` after toolchain change | `rm -rf node_modules apps/*/node_modules && npm install`. |
 | Mobile app cannot reach middleware | Phone hitting `localhost` of phone, not laptop | Use your laptop's LAN IP and ensure firewall allows inbound on `:3000`. |

@@ -140,6 +140,10 @@ export type ConnectionStatus = 'idle' | 'connecting' | 'streaming' | 'error';
 export interface StreamCheckBody {
   phoneNumber: string;
   scenario?: string;
+  /** Logged server-side with risk_check (dashboard demo amounts). */
+  amount?: number;
+  /** Labels entries in `/api/activity` (e.g. `dashboard`, `sendcash`). */
+  source?: string;
   location?: {
     latitude: number;
     longitude: number;

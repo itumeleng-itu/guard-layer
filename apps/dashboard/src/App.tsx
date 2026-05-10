@@ -5,6 +5,8 @@ import { PipelineFlow } from './components/PipelineFlow';
 import { DualScoreBar } from './components/DualScoreBar';
 import { DecisionOutput } from './components/DecisionOutput';
 import { ImpactCounter } from './components/ImpactCounter';
+import { MiddlewareActivityFeed } from './components/MiddlewareActivityFeed';
+import { useMiddlewareActivity } from './hooks/useMiddlewareActivity';
 
 /**
  * Standalone monitor UI for the GuardLayer SSE pipeline. Mock playback is
@@ -30,6 +32,7 @@ export function App(): JSX.Element {
   const timelineItems = useMemo(() => buildTimelineItems(records), [records]);
   const busy = status === 'connecting' || status === 'streaming';
   const liveMode = import.meta.env.VITE_USE_LIVE_SSE === 'true';
+  const activityEntries = useMiddlewareActivity(liveMode);
 
   return (
     <div className="app-shell">
@@ -124,6 +127,10 @@ export function App(): JSX.Element {
 
         <section className="panel panel--timeline">
           <SignalTimeline items={timelineItems} />
+        </section>
+
+        <section className="panel panel--span">
+          <MiddlewareActivityFeed entries={activityEntries} livePolling={liveMode} />
         </section>
       </main>
 

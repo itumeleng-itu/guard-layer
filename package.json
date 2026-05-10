@@ -10,10 +10,13 @@
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
-    "test:nokia": "node scripts/test-nokia.js"
+    "test:nokia": "node scripts/test-nokia.js",
+    "test:api": "node scripts/test-middleware-api.js",
+    "test:nac-sandbox": "node scripts/test-nokia-nac-sandbox.js"
   },
   "devDependencies": {
     "dotenv": "^16.6.1",
+    "nokia-network-as-code-sdk": "npm:network-as-code@^7.0.1",
     "turbo": "latest"
   }
 }

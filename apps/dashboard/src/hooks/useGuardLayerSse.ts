@@ -196,6 +196,8 @@ export function useGuardLayerSse(): UseGuardLayerSseResult {
           phoneNumber: opts.phoneNumber ?? '+358401234567',
           scenario: opts.scenario ?? 'all_clear',
           location: opts.location,
+          amount: opts.amountZar,
+          source: 'dashboard',
         });
       } else {
         const elevated =

@@ -15,6 +15,12 @@ import { computeRawRiskScore } from './src/agent/signalFusion.js';
 import { evaluateWithClaude, runDecisionPipeline } from './src/agent/decisionEngine.js';
 import { verifyBiometricSession } from './src/biometric/smileId.js';
 import { processSTKPush } from './src/payment/paymentSimulator.js';
+import {
+  FRICTIONLESS_BIO_TOKEN,
+  hasApproveCheck,
+  pushActivity,
+  listActivity,
+} from './src/activity/transactionLog.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: join(__dirname, '../../.env') });
@@ -37,18 +43,50 @@ function emitSse(res, eventType, data) {
 
 /**
  * @param {object} body
- * @returns {{ phoneNumber: string, scenario: string, location?: object }}
+ * @returns {{ phoneNumber: string, scenario: string, location?: object, amount?: number, source?: string }}
  */
 function parseTransactionBody(body) {
   const phoneNumber = body?.phoneNumber ?? body?.test_number;
   const scenario = body?.scenario ?? 'all_clear';
   const location = body?.location;
+  const rawAmount = body?.amount;
+  let amount;
+  if (rawAmount !== undefined && rawAmount !== null && rawAmount !== '') {
+    const n = Number(rawAmount);
+    if (!Number.isNaN(n)) amount = n;
+  }
+  const source =
+    typeof body?.source === 'string' && body.source.trim() ? body.source.trim() : 'unknown';
   if (!phoneNumber) {
     const err = new Error('phoneNumber is required');
     err.statusCode = 400;
     throw err;
   }
-  return { phoneNumber, scenario, location };
+  return { phoneNumber, scenario, location, amount, source };
+}
+
+/**
+ * @param {string} transactionRef
+ * @param {string} source
+ * @param {string} phoneNumber
+ * @param {number|undefined} amount
+ * @param {string} scenario
+ * @param {string} decision
+ * @param {number} riskScore
+ * @param {string} [explanation]
+ */
+function recordRiskCheck(transactionRef, source, phoneNumber, amount, scenario, decision, riskScore, explanation) {
+  pushActivity({
+    kind: 'risk_check',
+    transactionRef,
+    source,
+    phoneNumber,
+    scenario,
+    amount,
+    decision,
+    riskScore,
+    explanation: explanation ? String(explanation).slice(0, 500) : undefined,
+  });
 }
 
 async function interrogateAll(phoneNumber, scenario, location) {
@@ -133,7 +171,7 @@ function statusForDecision(decision) {
 app.post('/api/transaction/check/stream', async (req, res) => {
   const transactionRef = randomUUID();
   try {
-    const { phoneNumber, scenario, location } = parseTransactionBody(req.body);
+    const { phoneNumber, scenario, location, amount, source } = parseTransactionBody(req.body);
 
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
@@ -153,6 +191,16 @@ app.post('/api/transaction/check/stream', async (req, res) => {
     emitSse(res, SSE_EVENTS.DECISION, { transactionRef, ...decision });
 
     const payload = buildPayload(transactionRef, signals, rawScoreResult, decision);
+    recordRiskCheck(
+      transactionRef,
+      source,
+      phoneNumber,
+      amount,
+      scenario,
+      decision.decision,
+      decision.riskScore,
+      decision.explanation
+    );
     emitSse(res, SSE_EVENTS.COMPLETE, payload);
     res.end();
   } catch (e) {
@@ -175,10 +223,20 @@ app.post('/api/transaction/check/stream', async (req, res) => {
 app.post('/api/transaction/check', async (req, res) => {
   const transactionRef = randomUUID();
   try {
-    const { phoneNumber, scenario, location } = parseTransactionBody(req.body);
+    const { phoneNumber, scenario, location, amount, source } = parseTransactionBody(req.body);
     const signals = await interrogateAll(phoneNumber, scenario, location);
     const { rawScoreResult, decision } = await runDecisionPipeline(signals);
     const payload = buildPayload(transactionRef, signals, rawScoreResult, decision);
+    recordRiskCheck(
+      transactionRef,
+      source,
+      phoneNumber,
+      amount,
+      scenario,
+      decision.decision,
+      decision.riskScore,
+      decision.explanation
+    );
     res.status(statusForDecision(decision.decision)).json(payload);
   } catch (e) {
     const status = e.statusCode || 500;
@@ -201,9 +259,48 @@ app.post('/confirm', async (req, res) => {
     console.log(
       '[POST /confirm] Decision (agentic): Feature phone — USSD PIN challenge path (no selfie capability)'
     );
+    pushActivity({
+      kind: 'confirm_pin_challenge',
+      source: typeof body.source === 'string' ? body.source : 'unknown',
+      phoneNumber: body.phoneNumber,
+      amount: Number(body.amount) || undefined,
+      transactionRef: body.transactionRef,
+    });
     return res.status(200).json({
       action: 'PIN_CHALLENGE',
       message: 'USSD PIN required',
+    });
+  }
+
+  /** Frictionless APPROVE: prior risk_check must exist for same ref + MSISDN. */
+  if (
+    body.bio_token === FRICTIONLESS_BIO_TOKEN &&
+    body.transactionRef &&
+    body.phoneNumber &&
+    hasApproveCheck(body.transactionRef, body.phoneNumber)
+  ) {
+    console.log('[POST /confirm] Frictionless settlement after APPROVE risk_check');
+    const stk = await processSTKPush(body.phoneNumber, body.amount);
+    pushActivity({
+      kind: 'payment_settled',
+      source: typeof body.source === 'string' ? body.source : 'sendcash',
+      phoneNumber: body.phoneNumber,
+      amount: Number(body.amount) || undefined,
+      transactionRef: body.transactionRef,
+      txn_id: stk.txn_id,
+      settlement: 'frictionless',
+    });
+    return res.status(200).json({
+      txn_id: stk.txn_id,
+      message: 'Payment completed successfully',
+      status: stk.status,
+    });
+  }
+
+  if (body.bio_token === FRICTIONLESS_BIO_TOKEN) {
+    return res.status(403).json({
+      error:
+        'Frictionless settlement requires transactionRef + phoneNumber matching a recent APPROVE risk_check.',
     });
   }
 
@@ -211,6 +308,13 @@ app.post('/confirm', async (req, res) => {
     console.log(
       '[POST /confirm] Decision (agentic): Missing bio_token — escalate to Smile ID liveness (high-risk)'
     );
+    pushActivity({
+      kind: 'confirm_liveness_required',
+      source: typeof body.source === 'string' ? body.source : 'unknown',
+      phoneNumber: body.phoneNumber,
+      amount: Number(body.amount) || undefined,
+      transactionRef: body.transactionRef,
+    });
     return res.status(401).json({
       action: 'SMILE_ID_LIVENESS',
       message: 'Biometric verification required due to high-risk flag',
@@ -223,11 +327,26 @@ app.post('/confirm', async (req, res) => {
   const stk = await processSTKPush(body.phoneNumber, body.amount);
   console.log('[POST /confirm] Step 3: STK simulator completed — returning 200 with txn_id', stk);
 
+  pushActivity({
+    kind: 'payment_settled',
+    source: typeof body.source === 'string' ? body.source : 'unknown',
+    phoneNumber: body.phoneNumber,
+    amount: Number(body.amount) || undefined,
+    transactionRef: body.transactionRef,
+    txn_id: stk.txn_id,
+    settlement: 'biometric',
+  });
+
   return res.status(200).json({
     txn_id: stk.txn_id,
     message: 'Payment completed successfully',
     status: stk.status,
   });
+});
+
+/** Recent risk checks / settlements — dashboard polls this in live demos. */
+app.get('/api/activity', (_req, res) => {
+  res.json({ entries: listActivity() });
 });
 
 app.get('/health', (_req, res) => {

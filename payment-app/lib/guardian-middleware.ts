@@ -22,11 +22,14 @@ export interface NetworkSignals {
 
 export interface GuardianResult {
   decision: Decision;
-  signals: NetworkSignals;
+  /** Mock uses {@link NetworkSignals}; live API returns CAMARA-shaped objects from the middleware. */
+  signals: unknown;
   riskScore: number;           // 0-100 (higher = more risky)
   reason: string;              // Machine-readable reason code
   humanMessage: string;        // Claude-generated user-friendly explanation
   txnId: string | null;        // Transaction ID if approved
+  /** Present for live middleware checks (links to /confirm settlement). */
+  transactionRef?: string | null;
   challengeAction?: string;    // e.g. 'FACE_BIOMETRIC'
 }
 
@@ -153,7 +156,7 @@ export async function confirmPayment(bioToken: string): Promise<GuardianResult> 
 
   return {
     decision: 'APPROVE',
-    signals: {} as NetworkSignals,
+    signals: null,
     riskScore: 12,
     reason: 'BIOMETRIC_VERIFIED',
     humanMessage: 'Identity verified. Your payment has been processed successfully.',
